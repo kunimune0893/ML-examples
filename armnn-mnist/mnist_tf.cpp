@@ -39,7 +39,7 @@ armnn::OutputTensors MakeOutputTensors(const std::pair<armnn::LayerBindingId,
 #include "armnn/Utils.hpp"
 int main(int argc, char** argv)
 {
-	int testBatch = 10000, testCorrect = 0;
+	int testBatch = 1, testCorrect = 0;
 	
 	// ロガー初期化
 	armnn::LogSeverity level = armnn::LogSeverity::Debug;
@@ -60,6 +60,7 @@ int main(int argc, char** argv)
 	
     // Import the TensorFlow model. Note: use CreateNetworkFromBinaryFile for .pb files.
     armnnTfParser::ITfParserPtr parser = armnnTfParser::ITfParser::Create();
+#if 0
     armnn::INetworkPtr network = parser->CreateNetworkFromTextFile("model/simple_mnist_tf.prototxt",
                                                                    { {"Placeholder", {1, 784, 1, 1}} },
                                                                    { "Softmax" });
@@ -67,10 +68,18 @@ int main(int argc, char** argv)
     // Find the binding points for the input and output nodes
     armnnTfParser::BindingPointInfo inputBindingInfo = parser->GetNetworkInputBindingInfo("Placeholder");
     armnnTfParser::BindingPointInfo outputBindingInfo = parser->GetNetworkOutputBindingInfo("Softmax");
+#else
+    armnn::INetworkPtr network = parser->CreateNetworkFromTextFile("model/cnn-model-prob.pbtxt",
+                                                                   { {"tf_x", {1, 784, 1, 1}} },
+                                                                   { "probabilities" });
+    // Find the binding points for the input and output nodes
+    armnnTfParser::BindingPointInfo inputBindingInfo = parser->GetNetworkInputBindingInfo("tf_x");
+    armnnTfParser::BindingPointInfo outputBindingInfo = parser->GetNetworkOutputBindingInfo("probabilities");
+#endif
 
     // Optimize the network for a specific runtime compute device, e.g. CpuAcc, GpuAcc
-//	armnn::IRuntimePtr runtime = armnn::IRuntime::Create(armnn::Compute::CpuAcc);
-	armnn::IRuntimePtr runtime = armnn::IRuntime::Create(armnn::Compute::CpuRef);
+	armnn::IRuntimePtr runtime = armnn::IRuntime::Create(armnn::Compute::CpuAcc);
+//	armnn::IRuntimePtr runtime = armnn::IRuntime::Create(armnn::Compute::CpuRef);
     armnn::IOptimizedNetworkPtr optNet = armnn::Optimize(*network, runtime->GetDeviceSpec());
 
     // Load the optimized network onto the runtime device
@@ -81,22 +90,23 @@ int main(int argc, char** argv)
     std::string dataDir = "data/";
     int testImageIndex = 0;
     
+    std::unique_ptr<MnistImage[]> input = loadMnistImage(dataDir, testImageIndex, 10000);
+    if (input == nullptr)
+        return 1;
+    
     for( ; testImageIndex < testBatch; testImageIndex++ )
     {
-	    std::unique_ptr<MnistImage> input = loadMnistImage(dataDir, testImageIndex);
-	    if (input == nullptr)
-	        return 1;
-		
     	// Run a single inference on the test image
     	std::array<float, 10> output;
     	armnn::Status ret = runtime->EnqueueWorkload(networkIdentifier,
-    	                                             MakeInputTensors(inputBindingInfo, &input->image[0]),
+    	                                             MakeInputTensors(inputBindingInfo, &input[testImageIndex].image[0]),
     	                                             MakeOutputTensors(outputBindingInfo, &output[0]));
 		
     	// Convert 1-hot output to an integer label and print
     	int label = std::distance(output.begin(), std::max_element(output.begin(), output.end()));
     	
-    	if( label == input->label ){ testCorrect++; }
+    	if( label == input[testImageIndex].label ){ testCorrect++; }
+    	//std::cout << label << " ";
     }
 	std::cout << "Accuracy: " << testCorrect << " (" << testBatch << ")" << std::endl;
     

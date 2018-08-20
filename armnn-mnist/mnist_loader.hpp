@@ -21,7 +21,7 @@ void EndianSwap(unsigned int &x)
 }
 
 // Load a single MNIST image from the raw data files - none of this is Arm NN-specific
-std::unique_ptr<MnistImage> loadMnistImage(std::string dataDir, int image)
+std::unique_ptr<MnistImage[]> loadMnistImage(std::string dataDir, int image, int numImage = 1)
 {
     std::vector<unsigned char> I(g_kMnistImageByteSize);
     unsigned int label = 0;
@@ -69,31 +69,41 @@ std::unique_ptr<MnistImage> loadMnistImage(std::string dataDir, int image)
     imageStream.read(reinterpret_cast<char*>(&col), sizeof(col));
     EndianSwap(col);
 
-    // read image and label into memory
+    std::unique_ptr<MnistImage[]> ret(new MnistImage[10000]);
+    
     imageStream.seekg(image * g_kMnistImageByteSize, std::ios_base::cur);
-    imageStream.read(reinterpret_cast<char*>(&I[0]), g_kMnistImageByteSize);
     labelStream.seekg(image, std::ios_base::cur);
-    labelStream.read(reinterpret_cast<char*>(&label), 1);
-
-    if (!imageStream.good())
+    
+    for (unsigned int ii = 0; ii < numImage; ++ii)
     {
-        std::cerr << "Failed to read " << imagePath << std::endl;
-        return nullptr;
-    }
-    if (!labelStream.good())
-    {
-        std::cerr << "Failed to read " << labelPath << std::endl;
-        return nullptr;
-    }
-
-    // store image and label in MnistImage
-    std::unique_ptr<MnistImage> ret(new MnistImage);
-    ret->label = label;
-
-    for (unsigned int i = 0; i < col * row; ++i)
-    {
-        ret->image[i] = static_cast<float>(I[i]);
-    }
-
+	    // read image and label into memory
+	    imageStream.read(reinterpret_cast<char*>(&I[0]), g_kMnistImageByteSize);
+	    labelStream.read(reinterpret_cast<char*>(&label), 1);
+		
+	    if (!imageStream.good())
+	    {
+	        std::cerr << "Failed to read " << imagePath << std::endl;
+	        return nullptr;
+	    }
+	    if (!labelStream.good())
+	    {
+	        std::cerr << "Failed to read " << labelPath << std::endl;
+	        return nullptr;
+	    }
+	
+	    // store image and label in MnistImage
+	    ret[ii].label = label;
+	
+	    for (unsigned int i = 0; i < col * row; ++i)
+	    {
+	        ret[ii].image[i] = static_cast<float>(I[i]) / 255;
+#if 0
+	        if( ii == 0 ){
+	            printf( "%f ", ret[ii].image[i] );
+	        }
+#endif
+	    }
+	}
+	
     return ret;
 }
